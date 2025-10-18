@@ -27,8 +27,9 @@ class VacancyProcessResponse(BaseModel):
     company_name: str
     role_title: str
     vacancy_url: str
-    expected_salary: Optional[str] = None
-    contact_person: Optional[str] = None
+    expected_salary: Optional[str] = Field(None, description="Expected salary range")
+    contact_person: Optional[str] = Field(None, description="Recruiter or contact person name")
+    vacancy_snapshot_s3_key: Optional[str] = Field(None, description="S3 key for vacancy HTML snapshot")
 
 
 class ApplicationSubmitRequest(BaseModel):
@@ -64,5 +65,6 @@ class Application(BaseModel):
     comment: Optional[str] = Field(None, description="Additional comments or notes")
     cv_s3_key: Optional[str] = Field(None, description="S3 key for CV file")
     cl_s3_key: Optional[str] = Field(None, description="S3 key for Cover Letter file")
+    vacancy_snapshot_s3_key: Optional[str] = Field(None, description="S3 key for vacancy HTML snapshot")
 
 

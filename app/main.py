@@ -29,7 +29,8 @@ async def process_vacancy(request: VacancyProcessRequest):
         role_title="Software Engineer",
         vacancy_url=request.url,
         expected_salary="$80,000 - $120,000",
-        contact_person="Jane Recruiter"
+        contact_person="Jane Recruiter",
+        vacancy_snapshot_s3_key="snapshots/vacancy-123-2025-10-17.html"
     )
 
 
@@ -43,7 +44,7 @@ async def submit_application(request: ApplicationSubmitRequest):
     application_id = str(uuid.uuid4())
     return ApplicationResponse(
         application_id=application_id,
-        message="Application submitted successfully"
+        message=None
     )
 
 
@@ -63,7 +64,8 @@ async def get_applications():
         submission_date=datetime.now().isoformat(),
         last_update_date=datetime.now().isoformat(),
         expected_salary="$80,000 - $120,000",
-        contact_person="Jane Recruiter"
+        contact_person="Jane Recruiter",
+        vacancy_snapshot_s3_key="snapshots/vacancy-456-2025-10-17.html"
     )
     
     return [mock_application]
