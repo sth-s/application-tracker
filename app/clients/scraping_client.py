@@ -1,9 +1,10 @@
 """Scraping client for web content extraction."""
 
 import re
+import asyncio
 from typing import Dict, Any
-from playwright.sync_api import sync_playwright
-from ..errors import ScrapingError, ScrapingTimeoutError, ScrapingContentError
+from playwright.async_api import async_playwright
+from ..errors import ScrapingClientError
 
 
 class ScrapingClient:
@@ -19,7 +20,7 @@ class ScrapingClient:
         self.timeout = timeout
         self.headless = headless
     
-    def get_page_data(self, url: str) -> Dict[str, Any]:
+    async def get_page_data(self, url: str) -> Dict[str, Any]:
         """Get PDF and text content from a web page.
         
         Args:
@@ -33,55 +34,48 @@ class ScrapingClient:
         """
         browser = None
         try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
                     headless=self.headless, 
                     args=['--no-sandbox', '--disable-dev-shm-usage']
                 )
-                page = browser.new_page()
+                page = await browser.new_page()
                 
-                page.set_extra_http_headers({
+                await page.set_extra_http_headers({
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 })
                 
-                page.goto(url, timeout=self.timeout)
-                page.wait_for_load_state("load", timeout=15000)
+                await page.goto(url, timeout=self.timeout)
+                await page.wait_for_load_state("load", timeout=15000)
                 
                 # Wait a bit for dynamic content and cookie banners
-                page.wait_for_timeout(2000)
+                await asyncio.sleep(2)
 
-                self._handle_cookie_consent(page)
+                await self._handle_cookie_consent(page)
                 
                 # Wait again in case there are delayed elements
-                page.wait_for_timeout(1000)
+                await asyncio.sleep(1)
                 
-                pdf_content = page.pdf(format='A4', print_background=True)
-                text_content = self._extract_text(page)
-                
-                browser.close()
+                pdf_content = await page.pdf(format='A4', print_background=True)
+                text_content = await self._extract_text(page)
                 
                 return {
                     "pdf_content": pdf_content,
                     "text_content": text_content,
                     "url": url
                 }
+            
         except Exception as e:
+            raise ScrapingClientError(f"Scraping failed for {url}: {str(e)}")
+        
+        finally:
             if browser:
                 try:
-                    browser.close()
+                    await browser.close()
                 except:
                     pass
-            
-            error_msg = str(e).lower()
-            
-            if "timeout" in error_msg or "timed out" in error_msg:
-                raise ScrapingTimeoutError(f"Scraping timeout for {url}: {str(e)}")
-            elif "content" in error_msg or "extract" in error_msg:
-                raise ScrapingContentError(f"Content extraction failed for {url}: {str(e)}")
-            else:
-                raise ScrapingError(f"Scraping failed for {url}: {str(e)}")
     
-    def _extract_text(self, page) -> str:
+    async def _extract_text(self, page) -> str:
         """Extract clean text from page.
         
         Args:
@@ -90,12 +84,12 @@ class ScrapingClient:
         Returns:
             Clean text content.
         """
-        title = page.title() or ""
+        title = await page.title() or ""
         
         try:
-            main_text = page.locator("main").first.inner_text()
+            main_text = await page.locator("main").first.inner_text()
         except:
-            main_text = page.locator("body").inner_text()
+            main_text = await page.locator("body").inner_text()
         
         full_text = f"{title}\n\n{main_text}" if title else main_text
         return self._clean_text(full_text)
@@ -119,7 +113,7 @@ class ScrapingClient:
         
         return text.strip()
     
-    def _handle_cookie_consent(self, page):
+    async def _handle_cookie_consent(self, page):
         """Handle cookie consent banners by clicking accept buttons.
         
         Args:
@@ -176,9 +170,9 @@ class ScrapingClient:
         for selector in cookie_selectors:
             try:
                 button = page.locator(selector).first
-                if button.is_visible(timeout=2000):
-                    button.click(timeout=2000)
-                    page.wait_for_timeout(1000)
+                if await button.is_visible(timeout=2000):
+                    await button.click(timeout=2000)
+                    await button.wait_for(state="hidden", timeout=3000)
                     break
             except:
                 continue

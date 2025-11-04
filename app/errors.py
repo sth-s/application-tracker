@@ -32,34 +32,9 @@ class LLMRateLimitError(LLMClientError):
     pass
 
 
-class LLMConnectionError(LLMClientError):
-    """LLM API connection error."""
-    pass
-
-
-class LLMTimeoutError(LLMClientError):
-    """LLM API request timeout error."""
-    pass
-
-
-# Scraping errors
-class ScrapingError(ApplicationError):
+# Scraping client errors
+class ScrapingClientError(ApplicationError):
     """Base scraping error."""
-    pass
-
-
-class ScrapingBannedError(ScrapingError):
-    """IP blocked or bot detection error."""
-    pass
-
-
-class ScrapingTimeoutError(ScrapingError):
-    """Page load timeout error."""
-    pass
-
-
-class ScrapingContentError(ScrapingError):
-    """Content extraction error."""
     pass
 
 

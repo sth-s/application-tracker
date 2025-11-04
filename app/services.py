@@ -1,25 +1,51 @@
-"""Business logic services for application processing."""
+"""Business logic services"""
 
-from typing import Dict, Any
-from .clients import ScrapingClient, save_pdf_to_s3_stub
+import uuid
+from . import models
+from .clients.repository_client import RepositoryClient
+from .clients.dispatcher_client import DispatcherClient
 
 
-def process_vacancy_service(url: str) -> Dict[str, Any]:
-    """Process vacancy URL by scraping content and saving PDF snapshot.
-    
-    Args:
-        url: The URL of the vacancy page to process.
-        
-    Returns:
-        Dictionary containing scraped data and S3 key for PDF snapshot.
+class ApplicationService:
+    """Service for handling application processing logic.
     """
-    scraping_client = ScrapingClient()
-    page_data = scraping_client.get_page_data(url)
+
+    def __init__(self, repo: RepositoryClient, dispatcher: DispatcherClient):
+            self.repo = repo
+            self.dispatcher = dispatcher
+
+    async def create_new_application(self, vacancy_url: str) -> models.VacancyProcessResponse:
+        """Create a new "Pending" application record and dispatch processing.
+
+        Args:
+            vacancy_url: The vacancy URL to process.
+
+        Returns:
+            The response from the vacancy processing.
+        """
+        application_id = str(uuid.uuid4())
+
+        new_application = models.Application(
+            application_id=application_id,
+            vacancy_url=vacancy_url
+        )
+        await self.repo.create_application_record(new_application)
+        self.dispatcher.invoke_worker_lambda({"application_id": application_id, "vacancy_url": url})
+        return models.VacancyProcessResponse(
+            application_id=application_id,
+            vacancy_url=vacancy_url,
+            extraction_status=models.ExtractionStatus.PENDING,
+            application_status=models.ApplicationStatus.DRAFT
+        )
     
-    s3_key = save_pdf_to_s3_stub(page_data["pdf_content"], url)
-    
-    return {
-        "text_content": page_data["text_content"],
-        "vacancy_snapshot_s3_key": s3_key,
-        "url": url
-    }
+
+    async def get_application_by_id(self, application_id: str) -> models.VacancyDBModel | None:
+         """Retrieve application details by application ID.
+
+         Args:
+             application_id: The ID of the application to retrieve.
+
+         Returns:
+             The application details or None if not found.
+         """
+         return await self.repo.get_application_by_id(application_id)

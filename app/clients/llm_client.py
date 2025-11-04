@@ -2,10 +2,11 @@
 
 import os
 import json
+import time
 from typing import Union, Dict, Any
 from ..models import VacancyLLMResponse
-from ..errors import LLMValidationError, LLMRateLimitError, LLMConnectionError, LLMTimeoutError
-from groq import Groq, RateLimitError, APIConnectionError, APITimeoutError
+from ..errors import LLMClientError, LLMValidationError, LLMRateLimitError
+from groq import AsyncGroq, RateLimitError, APIConnectionError, APITimeoutError
 from pydantic import ValidationError
 
 
@@ -22,33 +23,11 @@ class LLMClient:
         if not api_key:
             raise ValueError("API key for LLM service must be provided.")
         
-        self.client = Groq(api_key=api_key)
+        self.client = AsyncGroq(api_key=api_key)
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
-    
-    def extract_vacancy_info(self, text_content: str, include_stats: bool = False) -> Union[VacancyLLMResponse, Dict[str, Any]]:
-        """Extract structured information from vacancy text using LLM.
-        
-        Args:
-            text_content: Clean text content from vacancy page.
-            include_stats: If True, return stats with response.
-            
-        Returns:
-            VacancyLLMResponse or dict with response and stats if include_stats=True.
-            
-            When include_stats=True, returns dict with:
-            - response: VacancyLLMResponse with extracted vacancy data
-            - stats: dict with usage (tokens), model, timing, and API metadata
-            
-        Raises:
-            Exception: If LLM extraction fails with wrapped original error.
-        """
-        import time
-        start_time = time.time()
-        
-        try:
-            system_prompt = """
+        self.system_prompt = """
             ### System
             You are an expert AI assistant. Your task is to extract key information from a job vacancy text 
             by returning a JSON object that adheres to the provided JSON Schema.
@@ -82,13 +61,34 @@ class LLMClient:
                 * RULE: If a name (e.g., Anna Schmidt) or email is not explicitly mentioned, 
                 you MUST pass `null`.
         """
+    
+    async def extract_vacancy_info(self, text_content: str, include_stats: bool = False) -> Union[VacancyLLMResponse, Dict[str, Any]]:
+        """Extract structured information from vacancy text using LLM.
+        
+        Args:
+            text_content: Clean text content from vacancy page.
+            include_stats: If True, return stats with response.
+            
+        Returns:
+            VacancyLLMResponse or dict with response and stats if include_stats=True.
+            
+            When include_stats=True, returns dict with:
+            - response: VacancyLLMResponse with extracted vacancy data
+            - stats: dict with usage (tokens), model, timing, and API metadata
+            
+        Raises:
+            Exception: If LLM extraction fails with wrapped original error.
+        """
 
-            response = self.client.chat.completions.create(
+        start_time = time.time()
+        
+        try:
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {
                         "role": "system",
-                        "content": system_prompt,
+                        "content": self.system_prompt,
                     },
                     {
                         "role": "user",
@@ -152,21 +152,16 @@ class LLMClient:
             return vacancy_llm_response
         
         except ValidationError as e:
-            error_details = []
-            for error in e.errors():
-                field = ".".join(str(loc) for loc in error.get("loc", []))
-                msg = error.get("msg", "")
-                error_details.append(f"{field}: {msg}")
-            raise LLMValidationError(f"LLM response validation failed - {'; '.join(error_details)}")
+            raise LLMValidationError(f"LLM response validation failed: {str(e)}")
         
         except RateLimitError as e:
-            raise (f"LLM rate limit exceeded - please wait before retrying: {str(e)}")
+            raise LLMRateLimitError(f"LLM rate limit exceeded - please wait before retrying: {str(e)}")
         
         except APITimeoutError as e:
-            raise LLMTimeoutError(f"LLM request timed out: {str(e)}")
+            raise LLMClientError(f"LLM request timed out: {str(e)}")
         
         except APIConnectionError as e:
-            raise LLMConnectionError(f"LLM API connection failed: {str(e)}")
+            raise LLMClientError(f"LLM API connection failed: {str(e)}")
         
         except ValueError as e:
             raise LLMValidationError(f"LLM response validation failed: {str(e)}")
@@ -176,4 +171,4 @@ class LLMClient:
         
         except Exception as e:
             error_type = type(e).__name__
-            raise LLMValidationError(f"LLM extraction failed ({error_type}): {str(e)}")
+            raise LLMClientError(f"LLM extraction failed ({error_type}): {str(e)}")

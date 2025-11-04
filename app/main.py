@@ -1,78 +1,74 @@
 """FastAPI application with job application tracking endpoints."""
 
-from datetime import datetime
-from fastapi import FastAPI, File, Form, UploadFile
-from typing import List, Optional
-import uuid
+from fastapi import FastAPI, Depends, Request, HTTPException, status
+from contextlib import asynccontextmanager
+from . import models
+from .services import ApplicationService
+from .clients.repository_client import RepositoryClient
+from .clients.dispatcher_client import DispatcherClient
 
-from .models import (
-    VacancyProcessRequest,
-    VacancyProcessResponse,
-    ApplicationSubmitRequest,
-    ApplicationResponse,
-    Application,
-    ApplicationStatus
-)
-from .services import process_vacancy_service
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager to initialize clients.
+    """
+    app.state.repo_client = RepositoryClient()
+    app.state.dispatcher_client = DispatcherClient()
+
 
 app = FastAPI(title="Application Tracker API", version="1.0.0")
 
 
-@app.post("/process-vacancy", response_model=VacancyProcessResponse)
-async def process_vacancy(request: VacancyProcessRequest):
-    """Extract job information from vacancy URL using LLM.
-    
-    TODO: Implement actual URL processing with Groq API.
+
+def get_application_service(request: Request) -> ApplicationService:
+    """Dependency to get ApplicationService instance.
     """
-    result = process_vacancy_service(request.url)
-    
-    return VacancyProcessResponse(
-        company_name="Example Corp",
-        role_title="Software Engineer", 
-        vacancy_url=request.url,
-        job_grade="Middle",
-        expected_salary="$80,000 - $120,000",
-        contact_person="Jane Recruiter",
-        vacancy_snapshot_s3_key=result["vacancy_snapshot_s3_key"]
+    return ApplicationService(
+        repo=request.app.state.repo_client, 
+        dispatcher=request.app.state.dispatcher_client
     )
 
-
-@app.post("/submit-application", response_model=ApplicationResponse)
-async def submit_application(request: ApplicationSubmitRequest):
-    """Submit job application with extracted data and optional cover letter.
-    
-    TODO: Implement file upload to S3 and data storage to DynamoDB.
+@app.post("/process-vacancy",
+            response_model=models.VacancyProcessResponse,
+            status_code=status.HTTP_202_ACCEPTED
+)
+async def process_vacancy(
+    request: models.VacancyProcessRequest,
+    service: ApplicationService = Depends(get_application_service)
+):
+    """Process vacancy URL to extract information and save snapshot.
     """
-    # Mock response for now
-    application_id = str(uuid.uuid4())
-    return ApplicationResponse(
-        application_id=application_id,
-        message=None
-    )
+    try:
+        response_data = await service.create_new_application(request.url)
+        return response_data
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process vacancy: {str(e)}"
+        )
 
-
-@app.get("/applications", response_model=List[Application])
-async def get_applications():
-    """Retrieve all submitted job applications.
-    
-    TODO: Implement actual data retrieval from DynamoDB.
+@app.get(
+    "/applications/{app_id}", 
+    response_model=models.VacancyDBModel
+)
+async def get_application(
+    app_id: str,
+    service: ApplicationService = Depends(get_application_service)
+):
+    """Retrieve application details by application ID.
     """
-    # Mock response for now
-    mock_application = Application(
-        application_id=str(uuid.uuid4()),
-        company_name="Example Corp",
-        role_title="Software Engineer",
-        vacancy_url="https://example.com/job/123",
-        status=ApplicationStatus.SUBMITTED,
-        submission_date=datetime.now().isoformat(),
-        last_update_date=datetime.now().isoformat(),
-        job_grade="Senior",
-        expected_salary="$80,000 - $120,000",
-        contact_person="Jane Recruiter",
-        vacancy_snapshot_s3_key="snapshots/vacancy-456-2025-10-17.html"
-    )
-    
-    return [mock_application]
+    try:
+        application = await service.get_application_by_id(app_id)
+        if not application:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Application with ID {app_id} not found"
+            )
+        return application
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve application: {str(e)}"
+        )
 
 
 @app.get("/")
