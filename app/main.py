@@ -13,6 +13,7 @@ from .models import (
     Application,
     ApplicationStatus
 )
+from .services import process_vacancy_service
 
 app = FastAPI(title="Application Tracker API", version="1.0.0")
 
@@ -23,14 +24,16 @@ async def process_vacancy(request: VacancyProcessRequest):
     
     TODO: Implement actual URL processing with Groq API.
     """
-    # Mock response for now
+    result = process_vacancy_service(request.url)
+    
     return VacancyProcessResponse(
         company_name="Example Corp",
-        role_title="Software Engineer",
+        role_title="Software Engineer", 
         vacancy_url=request.url,
+        job_grade="Middle",
         expected_salary="$80,000 - $120,000",
         contact_person="Jane Recruiter",
-        vacancy_snapshot_s3_key="snapshots/vacancy-123-2025-10-17.html"
+        vacancy_snapshot_s3_key=result["vacancy_snapshot_s3_key"]
     )
 
 
@@ -63,6 +66,7 @@ async def get_applications():
         status=ApplicationStatus.SUBMITTED,
         submission_date=datetime.now().isoformat(),
         last_update_date=datetime.now().isoformat(),
+        job_grade="Senior",
         expected_salary="$80,000 - $120,000",
         contact_person="Jane Recruiter",
         vacancy_snapshot_s3_key="snapshots/vacancy-456-2025-10-17.html"

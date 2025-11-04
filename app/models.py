@@ -17,16 +17,37 @@ class ApplicationStatus(str, Enum):
     ACCEPTED = "Accepted"
 
 
+class JobGrade(str, Enum):
+    """Job level enumeration."""
+    INTERNSHIP = "Internship"
+    WERKSTUDENT = "Werkstudent"
+    JUNIOR = "Junior"
+    MIDDLE = "Middle"
+    SENIOR = "Senior"
+    LEAD = "Lead"
+    PRINCIPAL = "Principal"
+    OTHER = "Other"
+
+
 class VacancyProcessRequest(BaseModel):
     """Request model for processing vacancy URL."""
     url: str
 
+class VacancyLLMResponse(BaseModel):
+    """Response model with extracted vacancy data from LLM."""
+    company_name: str
+    role_title: str
+    job_grade: Optional[JobGrade] = Field(None, description="Job level")
+    expected_salary: Optional[str] = Field(None, description="Expected salary range")
+    contact_person: Optional[str] = Field(None, description="Recruiter or contact person name")
+    requirements: Optional[List[str]] = Field(None, description="List of job requirements")
 
 class VacancyProcessResponse(BaseModel):
     """Response model with extracted vacancy data."""
     company_name: str
     role_title: str
     vacancy_url: str
+    job_grade: Optional[JobGrade] = Field(None, description="Job level")
     expected_salary: Optional[str] = Field(None, description="Expected salary range")
     contact_person: Optional[str] = Field(None, description="Recruiter or contact person name")
     vacancy_snapshot_s3_key: Optional[str] = Field(None, description="S3 key for vacancy HTML snapshot")
@@ -38,6 +59,7 @@ class ApplicationSubmitRequest(BaseModel):
     role_title: str
     vacancy_url: str
     status: ApplicationStatus = Field(default=ApplicationStatus.SUBMITTED, description="Application status")
+    job_grade: Optional[JobGrade] = Field(None, description="Job level")
     expected_salary: Optional[str] = Field(None, description="Expected salary range")
     contact_person: Optional[str] = Field(None, description="Recruiter or contact person name")
     rejection_reason: Optional[str] = Field(None, description="Reason for rejection if applicable")
@@ -59,6 +81,7 @@ class Application(BaseModel):
     status: ApplicationStatus = Field(description="Application status")
     submission_date: str = Field(description="Application submission date in ISO 8601 format")
     last_update_date: str = Field(description="Last update date in ISO 8601 format")
+    job_grade: Optional[JobGrade] = Field(None, description="Job level")
     expected_salary: Optional[str] = Field(None, description="Expected salary range")
     contact_person: Optional[str] = Field(None, description="Recruiter or contact person name")
     rejection_reason: Optional[str] = Field(None, description="Reason for rejection if applicable")
